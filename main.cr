@@ -1,4 +1,9 @@
+require "digest"
+require "digest/sha1"
+require "uri"
+
 torrent_file = "ubuntu-24.04-desktop-amd64.iso.torrent"
+torrent_file = "big-buck-bunny.torrent"
 torrent_content = File.read(torrent_file)
 
 DICT_START = 100 # d
@@ -94,7 +99,66 @@ def parse(bencode : String) : BencodeObject
     return parse_bencode_object(content_in_bytes, ptr)
 end
 
+def encode(obj : BencodeObject) : String
 
-r = parse(torrent_content)
+    case obj
+    when String
+        # do something
+        txt = obj.as(String)
+        bytes_len = txt.to_slice.size
+        return "#{bytes_len}:#{txt}"
+    when Int64
+        num = obj.as(Int64)
+        return "i#{num}e"
+    when Array
+        # do something
+        arr = obj.as(Array(BencodeObject))
+        result = "l"
+        i = 0
+        while i < arr.size
+            result += encode(arr[i])
+            i += 1
+        end
+        return result+"e"
+    when Hash
+        # do something
+        dict = obj.as(Hash(String, BencodeObject))
+        result = "d"
+        dict.each do |entry|
+            k, v = entry
+            result += (encode(k) + encode(v))
+        end
+        result += "e"
+        return result
+    else
+        raise "Unexpected type: #{typeof(obj)}"
+    end 
 
-puts r
+end
+
+def create_info_hash(bencode : Hash(String, BencodeObject)) : String
+    bencoded_info = encode(bencode["info"])
+    info_io = IO::Memory.new(bencoded_info)
+    io = IO::Digest.new(info_io, Digest::SHA1.new)
+    buffer = Bytes.new(20) # SHA1 size is 160 bits or 20 bytes
+    io.read(buffer)
+    return URI.encode_path(String.new(io.final))
+end
+
+def generate_peer_id(bencode : Hash(String, BencodeObject)) : String
+    return "<PEER_ID>"
+end
+
+def connect_tracker(bencode : Hash(String, BencodeObject))
+    info_hash = create_info_hash(bencode)
+    peer_id = generate_peer_id(bencode)
+    uploaded = 0
+    downloaded = 0
+    left = 0 # must be total size
+    compact = 1 # compact 6-byte format response expected (4 bytes - host, 2 bytes - port)
+    puts info_hash
+end
+
+parsed_bencode : Hash(String, BencodeObject) = parse(torrent_content).as(Hash(String, BencodeObject))
+puts parsed_bencode
+connect_tracker(parsed_bencode)
